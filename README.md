@@ -22,3 +22,5 @@ Feel free to report more!
 A list of all formats that are supported by vgmstream can be found here [kode54/vgmstream](https://github.com/kode54/vgmstream)
 
 And note that while vgmstream supports those formats, this doesn't mean it will load correctly on the 3ds! Some tweaks of vgmstream need to be made to have it work on the 3ds.
+
+If you find that a file format doesn't work then please comment the file format in this [issue](https://github.com/TricksterGuy/3ds-vgmstream/issues/3)
