@@ -57,7 +57,7 @@ export INCLUDE	:=	$(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
 #---------------------------------------------------------------------------------
 ARCH	:=	-march=armv6k -mtune=mpcore -mfloat-abi=hard
 
-CFLAGS	:=	-g -Wall -mword-relocations \
+CFLAGS	:=	-O2 -Wall -mword-relocations \
 			-fomit-frame-pointer -ffast-math \
 			$(ARCH)
 
@@ -65,8 +65,8 @@ CFLAGS	+=	$(INCLUDE) -DARM11 -D_3DS
 
 CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++11
 
-ASFLAGS	:=	-g $(ARCH)
-LDFLAGS	=	-specs=3dsx.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map) $(LIBPATHS)
+ASFLAGS	:=	-O2 $(ARCH)
+LDFLAGS	=	-specs=3dsx.specs -O2 $(ARCH) -Wl,-Map,$(notdir $*.map) $(LIBPATHS)
 
 LIBS	:= -lvgmstream -lvorbisfile -lvorbisenc -lvorbis -logg -lmpg123 -lctru -lm
 

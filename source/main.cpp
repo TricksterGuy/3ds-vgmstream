@@ -21,7 +21,6 @@ extern "C"
 #define CONSOLE_WIDTH 50
 #define CONSOLE_HEIGHT 28
 
-
 std::vector<std::string> files;
 unsigned int current_index = 0;
 
@@ -299,7 +298,7 @@ bool play_file(const std::string& filename)
     produceThread = threadCreate(decodeThread, &strm_file, 4 * 1024, prio-1, -2, false);
     musicThread = threadCreate(playMusic, &strm_file, 4 * 1024, prio-1, -2, false);
 
-    bool ret;
+    bool ret = false;
     while (aptMainLoop())
     {
         hidScanInput();
