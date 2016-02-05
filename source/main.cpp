@@ -18,8 +18,8 @@ extern "C"
 #include <unistd.h>
 #include "config.hpp"
 
-#define CONSOLE_WIDTH 29
-#define CONSOLE_HEIGHT 50
+#define CONSOLE_WIDTH 50
+#define CONSOLE_HEIGHT 28
 
 
 std::vector<std::string> files;
@@ -62,6 +62,8 @@ void getFiles(void)
         }
         closedir(d);
     }
+
+    std::sort(files.begin(), files.end());
 }
 
 void playMusic(void* arg)
@@ -235,7 +237,7 @@ std::string select_file(void)
         }
         if (kDown & KEY_UP)
         {
-            current_index = std::max(current_index - 1, 0U);
+            current_index = (current_index == 0) ? 0 : current_index - 1;
             refresh();
         }
         if (kDown & KEY_DOWN)
