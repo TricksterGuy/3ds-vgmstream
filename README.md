@@ -18,7 +18,7 @@
 * .xa
 
 ## Theoretically Playable Formats 
-A list of all formats that are supported by vgmstream can be found here [kode54/vgmstream](https://github.com/kode54/vgmstream)
+A list of all formats that are supported by vgmstream can be found here [vgmstream supported extensions](https://github.com/kode54/vgmstream/blob/fb74b39086146a0b40497d49bade5c2935f167d1/unix/exts.cc)
 
 And note that while vgmstream supports those formats, this doesn't mean it will load correctly on the 3ds! Some tweaks of vgmstream need to be made to have it work on the 3ds.
 
