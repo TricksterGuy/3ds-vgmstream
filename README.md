@@ -12,6 +12,7 @@
 ## Supported and Tested Formats
 * .strm
 * .brstm
+* .bcstm
 
 ## Theoretically Playable Formats 
 A list of all formats that are supported by vgmstream can be found here [kode54/vgmstream](https://github.com/kode54/vgmstream)
