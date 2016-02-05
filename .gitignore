@@ -19,10 +19,25 @@
 # Compiled Static libraries
 *.lai
 *.la
-*.a
 *.lib
 
 # Executables
 *.exe
 *.out
 *.app
+*.smdh
+*.3dsx
+*.elf
+
+3ds-vgmstream.layout
+libs/libmpg123
+libs/libvgmstream
+libs/libogg
+libs/libvorbis
+libs/mpg123/bin
+libs/mpg123/share
+libs/ogg/share
+libs/vorbis/share
+libs/ogg/lib/pkgconfig
+libs/vorbis/lib/pkgconfig
+libs/mpg123/lib/pkgconfig
