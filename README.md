@@ -15,7 +15,11 @@ Feel free to report more!
 .strm
 .brstm
 
-## Theoretically Supported Formats (Copied from kode54/vgmstream)
+## Theoretically Supported Formats 
+
+Note this list is copied from kode54/vgmstream
+And note that while vgmstream supports these formats, this doesn't mean that it will load correctly on the 3ds!
+
 PS2/PSX ADPCM:
 - .ads/.ss2
 - .ass
