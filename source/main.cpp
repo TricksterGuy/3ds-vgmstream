@@ -1,4 +1,3 @@
-
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -13,6 +12,7 @@ extern "C"
     #include <util.h>
     #include <vgmstream.h>
 }
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
