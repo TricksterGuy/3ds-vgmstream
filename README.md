@@ -9,16 +9,11 @@
 3. When the app is opened you are presented with a list of the files it found in the music folder.  Select one and press A.
 4. The music will start playing press B to choose something else to play and START to exit.
 
-## Known Issues
-See the Issues list for a list of bugs I have already found.
-Feel free to report more!
-
 ## Supported and Tested Formats
 * .strm
 * .brstm
 
 ## Theoretically Playable Formats 
-
 A list of all formats that are supported by vgmstream can be found here [kode54/vgmstream](https://github.com/kode54/vgmstream)
 
 And note that while vgmstream supports those formats, this doesn't mean it will load correctly on the 3ds! Some tweaks of vgmstream need to be made to have it work on the 3ds.
