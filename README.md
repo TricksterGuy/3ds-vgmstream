@@ -4,8 +4,8 @@
 3ds-vgmstream is a port of the above library with a simple player (for now) utilizing the library.
 
 ## Usage
-1. Create a folder named music at the top level of your sd card.
-2. Place any tested file formats in this directory.
+1. Extract the archive from releases to your sd card
+2. Place any tested file formats in the music directory on your sd card.
 3. When the app is opened you are presented with a list of the files it found in the music folder.  Select one and press A.
 4. The music will start playing press B to choose something else to play and START to exit.
 
