@@ -39,6 +39,11 @@ APP_DESCRIPTION	:= Port of the vgmstream library for the 3ds.
 APP_AUTHOR		:= tricksterguy
 ICON            := icon.png
 
+BANNER_IMAGE	:= banner.png
+# wav credit - http://soundbible.com/1630-Computer-Magic.html
+BANNER_AUDIO	:= banner.wav
+RSF_FILE		:= 3ds-vgmstream.rsf
+
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing
 # include and lib
@@ -161,11 +166,22 @@ $(OUTPUT).elf	:	$(OFILES)
 endif
 #---------------------------------------------------------------------------------------
 
+banner.bnr : $(BANNER_IMAGE) $(BANNER_AUDIO)
+	bannertool makebanner -i $(BANNER_IMAGE) -a $(BANNER_AUDIO) -o banner.bnr
+
+$(TARGET).strip.elf : $(TARGET).3dsx
+	cp $(TARGET).elf $(TARGET).strip.elf
+	arm-none-eabi-strip $(TARGET).strip.elf
+
 #---------------------------------------------------------------------------------
 # Makefile targets for Code::Blocks
 # Each build target in the project will run the corresponding target here.
 #---------------------------------------------------------------------------------
 3dsx : $(TARGET).3dsx
+
+cia : $(TARGET).strip.elf banner.bnr
+	makerom -f cia -o $(TARGET).cia -rsf $(RSF_FILE) -target t -exefslogo -elf $(TARGET).strip.elf -icon $(TARGET).smdh -banner banner.bnr
+	rm $(TARGET).strip.elf
 
 citra : all
 	citra $(OUTPUT).elf
