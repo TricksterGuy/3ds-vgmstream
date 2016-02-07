@@ -9,13 +9,8 @@
 3. When the app is opened you are presented with a list of the files it found in the music folder.  Select one and press A.
 4. The music will start playing press B to choose something else to play and START to exit.
 
-## Supported and Tested Formats
-* .adx
-* .bcstm
-* .brstm
-* .strm
-* .vag (laggy on load?)
-* .xa
+## Tested Formats
+see [here](https://github.com/TricksterGuy/3ds-vgmstream/blob/master/formats.csv)
 
 ## Theoretically Playable Formats 
 A list of all formats that are supported by vgmstream can be found here [vgmstream supported extensions](https://github.com/kode54/vgmstream/blob/fb74b39086146a0b40497d49bade5c2935f167d1/unix/exts.cc)
