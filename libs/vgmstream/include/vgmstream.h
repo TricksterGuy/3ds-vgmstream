@@ -731,7 +731,7 @@ typedef struct {
 #ifdef VGM_USE_MPEG
 #define AHX_EXPECTED_FRAME_SIZE 0x414
 /* MPEG_BUFFER_SIZE should be >= AHX_EXPECTED_FRAME_SIZE */
-#define MPEG_BUFFER_SIZE 0x1000
+#define MPEG_BUFFER_SIZE 0x500
 typedef struct {
     uint8_t buffer[MPEG_BUFFER_SIZE];
     int buffer_used;

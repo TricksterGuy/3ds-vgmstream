@@ -48,6 +48,7 @@
 			<Add option="-Wall" />
 		</Compiler>
 		<Unit filename="Makefile" />
+		<Unit filename="resources/AppInfo" />
 		<Unit filename="source/config.hpp" />
 		<Unit filename="source/main.cpp" />
 		<Extensions>

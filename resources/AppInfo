@@ -1,0 +1,5 @@
+APP_TITLE = 3ds-vgmstream
+APP_DESCRIPTION = Port of the vgmstream library for the 3ds.
+APP_AUTHOR = TricksterGuy
+APP_PRODUCT_CODE = CTR-P-VGMS
+APP_UNIQUE_ID = 0x3daa3

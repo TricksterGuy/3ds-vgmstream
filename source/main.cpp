@@ -25,9 +25,9 @@ std::vector<std::string> files;
 unsigned int current_index = 0;
 
 volatile bool runThreads = true;
-/// Handle signalling more data is ready to be played
+/// Handle signaling more data is ready to be played
 Handle bufferReadyConsumeRequest;
-/// Handle signalling more data is ready to be decoded
+/// Handle signaling more data is ready to be decoded
 Handle bufferReadyProduceRequest;
 
 struct stream_buffer
