@@ -34,17 +34,8 @@ struct stream_filename
     std::string filename;
 };
 
-enum class PlayMode
-{
-    /// Grabs samples piece by piece and plays it
-    STREAM = 0,
-    /// Loads entire song into memory and then plays it
-    LOAD = 1,
-};
-
 std::vector<std::string> files;
 unsigned int current_index = 0;
-PlayMode mode = PlayMode::STREAM;
 
 volatile bool runThreads = true;
 /// Handle signaling more data is ready to be played
@@ -247,8 +238,6 @@ void decodeThread(void* arg)
         svcClearEvent(bufferReadyProduceRequest);
 
     }
-
-    close_vgmstream(vgmstream);
 }
 
 u32 getKeyState()
@@ -270,7 +259,7 @@ void refresh(void)
             (files.size() < CONSOLE_HEIGHT ? 0 : files.size() - CONSOLE_HEIGHT) :
             current_index;
     end = std::min(start + CONSOLE_HEIGHT, files.size() - 1);
-    printf("3ds-vgmstream v%s - play mode: %s\n", version_str, (mode == PlayMode::STREAM ? "Stream" : "Play"));
+    printf("3ds-vgmstream v%s\n", version_str);
     for (unsigned int i = start; i <= end; i++)
     {
         printf(i == current_index ? ">" : " ");
@@ -306,11 +295,6 @@ std::string select_file(void)
         if (kDown & KEY_DOWN)
         {
             current_index = std::min(current_index + 1, files.size() - 1);
-            refresh();
-        }
-        if (kDown & KEY_R)
-        {
-            mode = (mode == PlayMode::STREAM) ? PlayMode::LOAD : PlayMode::STREAM;
             refresh();
         }
 
@@ -398,80 +382,7 @@ bool stream_file(const std::string& filename)
     playBuffer1.channels.clear();
     playBuffer2.channels.clear();
 
-    return ret;
-}
-
-bool play_file(const std::string& filename)
-{
-    if (filename.empty())
-    {
-        printf("No file selected\n");
-        return true;
-    }
-
-    VGMSTREAM* vgmstream = init_vgmstream(filename.c_str());
-    if (!vgmstream)
-    {
-        printf("Bad file %s\n", filename.c_str());
-        return true;
-    }
-
-    const int channels = vgmstream->channels;
-    const u32 stream_samples_amount = get_vgmstream_play_samples(1, 0, 0, vgmstream);
-    u32 buffer_size = stream_samples_amount * vgmstream->channels * sizeof(sample);
-
-    rawSampleBuffer = static_cast<sample*>(linearAlloc(buffer_size));
-    sample* buffer = static_cast<sample*>(linearAlloc(buffer_size));
-    for (int i = 0; i < channels; i++)
-        playBuffer1.channels.push_back(buffer + i * max_samples);
-
-    render_vgmstream(rawSampleBuffer, stream_samples_amount, vgmstream);
-
-    playBuffer1.samples = stream_samples_amount;
-    for (u32 i = 0; i < playBuffer1.samples; i++)
-    {
-        for (int j = 0; j < channels; j++)
-        {
-            playBuffer1.channels[j][i] = rawSampleBuffer[i * channels + j];
-        }
-    }
-
-    std::vector<sample*> addrs;
-    for (int i = 0; i < channels; i++)
-    {
-        sample* start = playBuffer1.channels[i];
-        sample* loop_start = start + vgmstream->loop_start_sample;
-        addrs.push_back(start);
-        addrs.push_back(loop_start);
-    }
-    csndPlaySoundMulti(0x8, SOUND_REPEAT | SOUND_FORMAT_16BIT, vgmstream->sample_rate, 1.0, 0.0, addrs, playBuffer1.samples * sizeof(sample));
-
-
-    bool ret = false;
-    while (aptMainLoop())
-    {
-        hidScanInput();
-        u32 kDown = hidKeysDown();
-        if (kDown & KEY_START || kDown & KEY_B)
-        {
-            ret = kDown & KEY_START;
-            break;
-        }
-        gfxFlushBuffers();
-        gfxSwapBuffers();
-
-        gspWaitForVBlank();
-    }
-
-    linearFree(rawSampleBuffer);
-    linearFree(buffer);
-    playBuffer1.channels.clear();
-
-    for (int i = 0; i < channels; i++)
-    {
-        CSND_SetPlayState(0x8 + i, 0);
-        CSND_UpdateInfo(true);
-    }
+    close_vgmstream(vgmstream);
 
     return ret;
 }
@@ -493,7 +404,7 @@ int main(void)
     while (!exit)
     {
         std::string filename = select_file();
-        exit = mode == PlayMode::STREAM ? stream_file(filename) : play_file(filename);
+        exit = stream_file(filename);
     }
 
     csndExit();
