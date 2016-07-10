@@ -22,6 +22,8 @@ extern "C"
 #define CONSOLE_WIDTH 50
 #define CONSOLE_HEIGHT (28 - 1)
 
+ndspWaveBuf waveBufs[23];
+
 struct stream_buffer
 {
     std::vector<sample*> channels;
@@ -50,64 +52,6 @@ stream_buffer playBuffer2;
 // Raw samples from vgmstream
 sample* rawSampleBuffer = NULL;
 
-
-Result csndPlaySoundMulti(int chn, u32 flags, u32 sampleRate, float vol, float pan, const std::vector<sample*>& play_data, u32 size)
-{
-	if (!(csndChannels & BIT(chn)))
-		return 1;
-
-	std::vector<u32> play_paddr;
-	play_paddr.reserve(play_data.size());
-
-	int encoding = (flags >> 12) & 3;
-	int loopMode = (flags >> 10) & 3;
-
-
-	if (!loopMode) flags |= SOUND_ONE_SHOT;
-
-	if (encoding != CSND_ENCODING_PSG)
-	{
-		for (const auto& addr : play_data)
-            play_paddr.push_back(osConvertVirtToPhys(addr));
-
-		/*if (data0 && encoding == CSND_ENCODING_ADPCM)
-		{
-			int adpcmSample = ((s16*)data0)[-2];
-			int adpcmIndex = ((u8*)data0)[-2];
-			CSND_SetAdpcmState(chn, 0, adpcmSample, adpcmIndex);
-		}*/
-	}
-
-	u32 timer = CSND_TIMER(sampleRate);
-	if (timer < 0x0042) timer = 0x0042;
-	else if (timer > 0xFFFF) timer = 0xFFFF;
-	flags &= ~0xFFFF001F;
-	u32 volumes = CSND_VOL(vol, pan);
-
-	int channels = play_data.size() / (loopMode ? 2 : 1);
-
-	if (loopMode)
-    {
-        for (int i = 0; i < channels; i++)
-        {
-            u32 paddr0 = play_paddr[2 * i];
-            u32 paddr1 = play_paddr[2 * i + 1];
-            CSND_SetChnRegs(flags | SOUND_ENABLE | SOUND_CHANNEL(chn+i) | (timer << 16), paddr0, paddr1, size, volumes, volumes);
-            size -= paddr1 - paddr0;
-            CSND_SetBlock(chn, 1, paddr1, size);
-        }
-    }
-    else
-    {
-        for (int i = 0; i < channels; i++)
-        {
-            CSND_SetChnRegs(flags | SOUND_ENABLE | SOUND_CHANNEL(chn+i) | (timer << 16), play_paddr[i], 0, size, volumes, volumes);
-        }
-    }
-
-	return csndExecCmds(true);
-}
-
 void getFiles(void)
 {
     struct dirent* dir;
@@ -124,6 +68,21 @@ void getFiles(void)
     std::sort(files.begin(), files.end());
 }
 
+void playSoundChannels(int startchn, int samples, bool loop, std::vector<sample*>& data)
+{
+    for (unsigned int i = 0; i < data.size(); i++)
+    {
+        int channel = startchn + i;
+        ndspChnWaveBufClear(channel);
+        memset(&waveBufs[channel], 0, sizeof(ndspWaveBuf));
+        waveBufs[channel].data_vaddr = data[i];
+        waveBufs[channel].nsamples = samples / data.size();
+        waveBufs[channel].looping = loop;
+        DSP_FlushDataCache(data[i], samples * sizeof(sample));
+        ndspChnWaveBufAdd(channel, &waveBufs[channel]);
+    }
+}
+
 void streamMusic(void* arg)
 {
     stream_filename* strm_file = static_cast<stream_filename*>(arg);
@@ -132,52 +91,53 @@ void streamMusic(void* arg)
     if (!vgmstream)
         return;
 
-    const int channels = vgmstream->channels;
-    u32 audio_playback_status = 1;
-
     stream_buffer* buffer = &playBuffer1;
     // Wait for first data
     svcWaitSynchronization(bufferReadyConsumeRequest, U64_MAX);
     svcClearEvent(bufferReadyConsumeRequest);
+
+	ndspSetOutputMode(NDSP_OUTPUT_STEREO);
+	float mix[12] = {0};
+	mix[0] = mix[1] = 1.0;
+
+	int channel = 0;
+	for (int i = 0; i < vgmstream->channels; i++)
+    {
+        ndspChnReset(channel + i);
+        ndspChnSetMix(channel + i, mix);
+        ndspChnSetInterp(channel + i, NDSP_INTERP_LINEAR);
+        ndspChnSetRate(channel + i, vgmstream->sample_rate / vgmstream->channels);
+        ndspChnSetFormat(channel + i, NDSP_FORMAT_STEREO_PCM16);
+    }
+
     // Play it
-    csndPlaySoundMulti(0x8, SOUND_ONE_SHOT | SOUND_FORMAT_16BIT, vgmstream->sample_rate, 1.0, 0.0, buffer->channels, buffer->samples * sizeof(sample));
+    playSoundChannels(channel, buffer->samples, false, buffer->channels);
     svcSignalEvent(bufferReadyProduceRequest);
+    svcSleepThread((u64)buffer->samples * 1000000000 / vgmstream->sample_rate);
 
     while (runThreads)
     {
-        if (R_SUCCEEDED(csndIsPlaying(0x8, (u8*)&audio_playback_status)))
-        {
-            if (audio_playback_status == 0)
-            {
-                // Make sure the buffer is flushed.
-                for (int i = 0; i < channels; i++)
-                    GSPGPU_FlushDataCache(buffer->channels[i], buffer->samples * sizeof(sample));
+        // Wait for sound data here
+        svcWaitSynchronization(bufferReadyConsumeRequest, U64_MAX);
+        svcClearEvent(bufferReadyConsumeRequest);
 
-                // Wait for sound data here
-                svcWaitSynchronization(bufferReadyConsumeRequest, U64_MAX);
-                svcClearEvent(bufferReadyConsumeRequest);
+        // Flip buffers
+        if (buffer == &playBuffer1)
+            buffer = &playBuffer2;
+        else
+            buffer = &playBuffer1;
 
-                // Flip buffers
-                if (buffer == &playBuffer1)
-                    buffer = &playBuffer2;
-                else
-                    buffer = &playBuffer1;
+        playSoundChannels(channel, buffer->samples, false, buffer->channels);
+        svcSignalEvent(bufferReadyProduceRequest);
+        svcSleepThread((u64)buffer->samples * 1000000000 / vgmstream->sample_rate);
 
-                csndPlaySoundMulti(0x8, SOUND_ONE_SHOT | SOUND_FORMAT_16BIT, vgmstream->sample_rate, 1.0, 0.0, buffer->channels, buffer->samples * sizeof(sample));
-                audio_playback_status = 1;
-                svcSignalEvent(bufferReadyProduceRequest);
-            }
-        }
+        hidScanInput();
+        if (hidKeysDown() & KEY_START)
+            break;
     }
 
-    for (int i = 0; i < channels; i++)
-        GSPGPU_FlushDataCache(buffer->channels[i], buffer->samples * sizeof(sample));
-
-    for (int i = 0; i < channels; i++)
-    {
-        CSND_SetPlayState(0x8 + i, 0);
-        CSND_UpdateInfo(true);
-    }
+    for (int i = 0; i < vgmstream->channels; i++)
+        ndspChnWaveBufClear(channel + i);
 }
 
 void decodeThread(void* arg)
@@ -224,7 +184,7 @@ void decodeThread(void* arg)
 
         consoleClear();
         printf("\x1b[1;0HCurrently playing %s\nPress B to choose another song\nPress Start to exit", filename.c_str());
-        printf("\x1b[29;0HPLAYING %.4lf %.4lf\n", (float)current_sample_pos / vgmstream->sample_rate, (float)stream_samples_amount / vgmstream->sample_rate);
+        printf("\x1b[29;0HPLAYING %.4lf %.4lf\n", (float)current_sample_pos / vgmstream->sample_rate, (float)/*stream_samples_amount /*/ vgmstream->sample_rate);
         current_sample_pos += toget;
 
         // Flip buffers
@@ -332,6 +292,8 @@ bool stream_file(const std::string& filename)
     rawSampleBuffer = static_cast<sample*>(linearAlloc(buffer_size));
     sample* buffer = static_cast<sample*>(linearAlloc(buffer_size));
     sample* buffer2 = static_cast<sample*>(linearAlloc(buffer_size));
+    playBuffer1.samples = max_samples;
+    playBuffer2.samples = max_samples;
     for (int i = 0; i < channels; i++)
     {
         playBuffer1.channels.push_back(buffer + i * max_samples);
@@ -390,14 +352,16 @@ bool stream_file(const std::string& filename)
 int main(void)
 {
     gfxInitDefault();
-    csndInit();
+
+	if(R_FAILED(ndspInit()))
+		return 0;
 
     consoleInit(GFX_TOP, NULL);
 
     gfxSetDoubleBuffering(GFX_BOTTOM, false);
 
-    svcCreateEvent(&bufferReadyConsumeRequest, 0);
-    svcCreateEvent(&bufferReadyProduceRequest, 0);
+    svcCreateEvent(&bufferReadyConsumeRequest, RESET_STICKY);
+    svcCreateEvent(&bufferReadyProduceRequest, RESET_STICKY);
     getFiles();
 
     bool exit = false;
@@ -407,7 +371,7 @@ int main(void)
         exit = stream_file(filename);
     }
 
-    csndExit();
+    ndspExit();
     gfxExit();
 
     return 0;

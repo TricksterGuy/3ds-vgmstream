@@ -5,7 +5,7 @@
 #ifndef _VGMSTREAM_H
 #define _VGMSTREAM_H
 
-enum { PATH_LIMIT = 256};
+enum { PATH_LIMIT = 256 };
 
 /* Due mostly to licensing issues, Vorbis, MPEG, and G.722.1 decoding are
  * done by external libraries.
@@ -45,6 +45,8 @@ enum { PATH_LIMIT = 256};
 #ifdef VGM_USE_MAIATRAC3PLUS
 #include "maiatrac3plus.h"
 #endif
+
+#include "clHCA.h"
 
 #include "coding/acm_decoder.h"
 #include "coding/nwa_decoder.h"
@@ -149,6 +151,8 @@ typedef enum {
     coding_PCM16LE_XOR_int, /* sample-level xor */
     coding_LSF,             /* lsf ADPCM */
     coding_MTAF,            /* Konami IMA-derived MTAF ADPCM */
+    
+    coding_CRI_HCA,         /* CRI High Compression Audio */
 
 #if defined(VGM_USE_MP4V2) && defined(VGM_USE_FDKAAC)
 	coding_MP4_AAC,
@@ -358,7 +362,7 @@ typedef enum {
     meta_YDSP,				/* WWE Day of Reckoning */
     meta_FFCC_STR,    /* Final Fantasy: Crystal Chronicles */
 
-
+    
     meta_WAA_WAC_WAD_WAM,	/* Beyond Good & Evil */
     meta_GCA,				      /* Metal Slug Anthology */
     meta_MSVP,				    /* Popcap Hits */
@@ -373,7 +377,7 @@ typedef enum {
     meta_NGC_PDT,         /* Mario Party 6 */
     meta_DC_ASD,    			/* Miss Moonligh */
     meta_NAOMI_SPSD,		  /* Guilty Gear X */
-
+    
     meta_RSD2VAG,			  /* RSD2VAG */
     meta_RSD2PCMB,			/* RSD2PCMB */
     meta_RSD2XADP,			/* RSD2XADP */
@@ -421,7 +425,7 @@ typedef enum {
     meta_XBOX_MATX,			/* XBOX MATX */
     meta_XBOX_XMU,			/* XBOX XMU */
     meta_XBOX_XVAS,			/* XBOX VAS */
-
+    
     meta_EAXA_R2,			/* EA XA Release 2 */
     meta_EAXA_R3,			/* EA XA Release 3 */
     meta_EAXA_PSX,			/* EA with PSX ADPCM */
@@ -556,7 +560,7 @@ typedef enum {
     meta_PS3_VAWX,			// No More Heroes: Heroes Paradise (PS3)
     meta_PC_SNDS,           // Incredibles PC .snds
     meta_PS2_WMUS,          // The Warriors (PS2)
-    meta_HYPERSCAN_KVAG,	// Hyperscan KVAG/BVG
+    meta_HYPERSCAN_KVAG,	// Hyperscan KVAG/BVG 
     meta_IOS_PSND,          // Crash Bandicoot Nitro Kart 2 (iOS)
     meta_BOS_ADP,           // ADP! (Balls of Steel, PC)
     meta_EB_SFX,            // Excitebots .sfx
@@ -581,6 +585,7 @@ typedef enum {
    meta_G1L,           		// Tecmo Koei G1L
    meta_MCA,			// Capcom MCA "MADP"
    meta_XB3D_ADX,				// Xenoblade Chronicles 3D ADX
+   meta_HCA,
 #ifdef VGM_USE_MP4V2
 	meta_MP4,
 #endif
@@ -635,7 +640,7 @@ typedef struct {
     /* BMDX encryption */
     uint8_t bmdx_xor;
     uint8_t bmdx_add;
-
+    
     /* generic encryption */
     uint16_t key_xor;
 } VGMSTREAMCHANNEL;
@@ -688,8 +693,8 @@ typedef struct {
     int8_t get_high_nibble;
 
     uint8_t	ea_big_endian;			/* Big Endian ? */
-    uint8_t	ea_compression_type;
-    uint8_t	ea_compression_version;
+    uint8_t	ea_compression_type;		
+    uint8_t	ea_compression_version;	
     uint8_t	ea_platform;
 
     int32_t ws_output_size;         /* output bytes for this block */
@@ -697,7 +702,7 @@ typedef struct {
     void * start_vgmstream;    /* a copy of the VGMSTREAM as it was at the beginning of the stream */
 
     int32_t thpNextFrameSize;
-
+	
 	int skip_last_channel;
 
 	/* Data the codec needs for the whole stream. This is for codecs too
@@ -780,7 +785,7 @@ typedef struct {
     ACMStream **files;
 } mus_acm_codec_data;
 
-#define AIX_BUFFER_SIZE 0x1000
+#define AIX_BUFFER_SIZE 0x0500
 /* AIXery */
 typedef struct {
     sample buffer[AIX_BUFFER_SIZE];
@@ -813,6 +818,17 @@ typedef struct {
     VGMSTREAM **substreams;
     STREAMFILE **intfiles;
 } scd_int_codec_data;
+
+typedef struct {
+    STREAMFILE *streamfile;
+    uint64_t start;
+    uint64_t size;
+    clHCA_stInfo info;
+    unsigned int curblock;
+    unsigned int sample_ptr, samples_discard;
+    signed short sample_buffer[clHCA_samplesPerBlock * 16];
+    // clHCA exists here
+} hca_codec_data;
 
 #ifdef VGM_USE_MP4V2
 typedef struct {
