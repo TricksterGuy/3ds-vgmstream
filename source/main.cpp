@@ -11,6 +11,7 @@ extern "C"
     #include <3ds.h>
     #include <util.h>
     #include <vgmstream.h>
+    #include <stdarg.h>
 }
 
 #include <sys/types.h>
@@ -21,8 +22,6 @@ extern "C"
 
 #define CONSOLE_WIDTH 50
 #define CONSOLE_HEIGHT (28 - 1)
-
-ndspWaveBuf waveBufs[23];
 
 struct stream_buffer
 {
@@ -44,6 +43,9 @@ volatile bool runThreads = true;
 Handle bufferReadyConsumeRequest;
 /// Handle signaling more data is ready to be decoded
 Handle bufferReadyProduceRequest;
+#ifdef DEBUG
+LightLock debug_lock;
+#endif
 
 // At any point in time in stream mode one of these will be playing
 // and the other will be used for unraveling channel data from vgmstream
@@ -51,6 +53,72 @@ stream_buffer playBuffer1;
 stream_buffer playBuffer2;
 // Raw samples from vgmstream
 sample* rawSampleBuffer = NULL;
+
+PrintConsole topScreen, bottomScreen;
+
+static inline void print(const char *format, ...)
+{
+#ifdef DEBUG
+    LightLock_Lock(&debug_lock);
+#endif
+    consoleSelect(&topScreen);
+    va_list ap;
+    va_start(ap, format);
+    vprintf(format, ap);
+    va_end(ap);
+#ifdef DEBUG
+    LightLock_Unlock(&debug_lock);
+#endif
+}
+
+static inline void debug(const char *format, ...)
+{
+#ifdef DEBUG
+    LightLock_Lock(&debug_lock);
+    consoleSelect(&bottomScreen);
+    va_list ap;
+    va_start(ap, format);
+    vfprintf(stderr, format, ap);
+    va_end(ap);
+    LightLock_Unlock(&debug_lock);
+#endif
+}
+
+static inline void clearTopScreen(void)
+{
+    consoleSelect(&topScreen);
+    consoleClear();
+}
+
+static inline void clearBottomScreen(void)
+{
+    consoleSelect(&bottomScreen);
+    consoleClear();
+}
+
+/*
+void AptEventHook(APT_HookType hookType, void* param)
+{
+    switch (hookType)
+    {
+        case APTHOOK_ONSUSPEND:
+            paused = true;
+            break;
+        case APTHOOK_ONRESTORE:
+            paused = false;
+            break;
+        case APTHOOK_ONSLEEP:
+            break;
+        case APTHOOK_ONWAKEUP:
+            break;
+        case APTHOOK_ONEXIT:
+            runThreads = false;
+            break;
+        default:
+            break;
+    }
+}
+*/
 
 void getFiles(void)
 {
@@ -68,80 +136,114 @@ void getFiles(void)
     std::sort(files.begin(), files.end());
 }
 
-void playSoundChannels(int startchn, int samples, bool loop, std::vector<sample*>& data)
+void playSoundChannels(int startchn, int samples, bool loop, std::vector<sample*>& data, std::vector<ndspWaveBuf>& waveBufs)
 {
     for (unsigned int i = 0; i < data.size(); i++)
     {
         int channel = startchn + i;
-        ndspChnWaveBufClear(channel);
-        memset(&waveBufs[channel], 0, sizeof(ndspWaveBuf));
-        waveBufs[channel].data_vaddr = data[i];
-        waveBufs[channel].nsamples = samples / data.size();
-        waveBufs[channel].looping = loop;
+        waveBufs[i].data_vaddr = data[i];
+        waveBufs[i].nsamples = samples / data.size();
+        waveBufs[i].looping = loop;
         DSP_FlushDataCache(data[i], samples * sizeof(sample));
-        ndspChnWaveBufAdd(channel, &waveBufs[channel]);
+        ndspChnWaveBufAdd(channel, &waveBufs[i]);
     }
 }
 
 void streamMusic(void* arg)
 {
+    clearBottomScreen();
+    debug("play_buffer start\n");
     stream_filename* strm_file = static_cast<stream_filename*>(arg);
     VGMSTREAM* vgmstream = strm_file->stream;
 
     if (!vgmstream)
         return;
 
-    stream_buffer* buffer = &playBuffer1;
-    // Wait for first data
-    svcWaitSynchronization(bufferReadyConsumeRequest, U64_MAX);
-    svcClearEvent(bufferReadyConsumeRequest);
-
-	ndspSetOutputMode(NDSP_OUTPUT_STEREO);
-	float mix[12] = {0};
-	mix[0] = mix[1] = 1.0;
-
 	int channel = 0;
+	ndspSetOutputMode(NDSP_OUTPUT_STEREO);
 	for (int i = 0; i < vgmstream->channels; i++)
     {
         ndspChnReset(channel + i);
-        ndspChnSetMix(channel + i, mix);
         ndspChnSetInterp(channel + i, NDSP_INTERP_LINEAR);
         ndspChnSetRate(channel + i, vgmstream->sample_rate / vgmstream->channels);
         ndspChnSetFormat(channel + i, NDSP_FORMAT_STEREO_PCM16);
     }
 
-    // Play it
-    playSoundChannels(channel, buffer->samples, false, buffer->channels);
+    std::vector<ndspWaveBuf> waveBufs1(vgmstream->channels);
+    std::vector<ndspWaveBuf> waveBufs2(vgmstream->channels);
+    for (auto& waveBuf : waveBufs1)
+        memset(&waveBuf, 0, sizeof(ndspWaveBuf));
+    for (auto& waveBuf : waveBufs2)
+        memset(&waveBuf, 0, sizeof(ndspWaveBuf));
+
+    debug("play_buffer signal produce\n");
     svcSignalEvent(bufferReadyProduceRequest);
-    svcSleepThread((u64)buffer->samples * 1000000000 / vgmstream->sample_rate);
+    // Wait for 2 buffers to play
+    debug("play_buffer wait data 1\n");
+    svcWaitSynchronization(bufferReadyConsumeRequest, U64_MAX);
+    svcClearEvent(bufferReadyConsumeRequest);
+
+    debug("play_buffer signal produce\n");
+    svcSignalEvent(bufferReadyProduceRequest);
+    debug("play_buffer wait data 2\n");
+    svcWaitSynchronization(bufferReadyConsumeRequest, U64_MAX);
+    svcClearEvent(bufferReadyConsumeRequest);
+
+    // Play it
+    debug("play_buffer play\n");
+    playSoundChannels(channel, playBuffer1.samples, false, playBuffer1.channels, waveBufs1);
+    playSoundChannels(channel, playBuffer2.samples, false, playBuffer2.channels, waveBufs2);
+    stream_buffer* buffer = &playBuffer2;
+    stream_buffer* playingBuf = &playBuffer1;
+    std::vector<ndspWaveBuf>* waveBuf = &waveBufs2;
+    std::vector<ndspWaveBuf>* playingWaveBuf = &waveBufs1;
+
+    debug("play_buffer signal produce\n");
+    svcSignalEvent(bufferReadyProduceRequest);
 
     while (runThreads)
     {
-        // Wait for sound data here
-        svcWaitSynchronization(bufferReadyConsumeRequest, U64_MAX);
-        svcClearEvent(bufferReadyConsumeRequest);
+        if (playingWaveBuf->at(0).status == NDSP_WBUF_DONE) {
+            debug("play_buffer wait data\n");
+            // Wait for sound data here
+            svcWaitSynchronization(bufferReadyConsumeRequest, U64_MAX);
+            svcClearEvent(bufferReadyConsumeRequest);
 
-        // Flip buffers
-        if (buffer == &playBuffer1)
-            buffer = &playBuffer2;
-        else
-            buffer = &playBuffer1;
+            // Flip buffers
+            if (buffer == &playBuffer1)
+            {
+                buffer = &playBuffer2;
+                playingBuf = &playBuffer1;
+                waveBuf = &waveBufs2;
+                playingWaveBuf = &waveBufs1;
+            }
+            else
+            {
+                buffer = &playBuffer1;
+                playingBuf = &playBuffer2;
+                waveBuf = &waveBufs1;
+                playingWaveBuf = &waveBufs2;
+            }
 
-        playSoundChannels(channel, buffer->samples, false, buffer->channels);
-        svcSignalEvent(bufferReadyProduceRequest);
-        svcSleepThread((u64)buffer->samples * 1000000000 / vgmstream->sample_rate);
 
-        hidScanInput();
-        if (hidKeysDown() & KEY_START)
-            break;
+            debug("play_buffer play\n");
+            playSoundChannels(channel, buffer->samples, false, buffer->channels, *waveBuf);
+            debug("play_buffer signal produce\n");
+            svcSignalEvent(bufferReadyProduceRequest);
+        }
     }
 
     for (int i = 0; i < vgmstream->channels; i++)
+    {
         ndspChnWaveBufClear(channel + i);
+    }
+    debug("play_buffer done\n");
+
 }
 
 void decodeThread(void* arg)
 {
+    debug("decode_buffer start\n");
     stream_filename* strm_file = static_cast<stream_filename*>(arg);
     VGMSTREAM* vgmstream = strm_file->stream;
     std::string& filename = strm_file->filename;
@@ -156,6 +258,11 @@ void decodeThread(void* arg)
 
     while (runThreads)
     {
+        debug("decode_buffer wait produce\n");
+        // Wait for signal to make another stream
+        svcWaitSynchronization(bufferReadyProduceRequest, U64_MAX);
+        svcClearEvent(bufferReadyProduceRequest);
+
         u32 toget = max_samples;
 
         if (!vgmstream->loop_flag)
@@ -166,9 +273,11 @@ void decodeThread(void* arg)
                 toget = stream_samples_amount - current_sample_pos;
         }
 
+        debug("decode_buffer decode %d\n", toget);
         // TODO modify render_vgmstream to return not decode channel data sequentially in the buffer passed in.
         render_vgmstream(rawSampleBuffer, toget, vgmstream);
 
+        debug("decode_buffer detangle\n");
         // Detangle audio data...
         buffer->samples = toget;
         for (u32 i = 0; i < max_samples; i++)
@@ -179,12 +288,13 @@ void decodeThread(void* arg)
             }
         }
 
+        debug("decode_buffer signal consume\n");
         // Ready to play
         svcSignalEvent(bufferReadyConsumeRequest);
 
-        consoleClear();
-        printf("\x1b[1;0HCurrently playing %s\nPress B to choose another song\nPress Start to exit", filename.c_str());
-        printf("\x1b[29;0HPLAYING %.4lf %.4lf\n", (float)current_sample_pos / vgmstream->sample_rate, (float)/*stream_samples_amount /*/ vgmstream->sample_rate);
+        clearTopScreen();
+        print("\x1b[1;0HCurrently playing %s\nPress B to choose another song\nPress Start to exit", filename.c_str());
+        print("\x1b[29;0HPLAYING %.4lf %.4lf\n", (float)current_sample_pos / vgmstream->sample_rate, (float)stream_samples_amount / vgmstream->sample_rate);
         current_sample_pos += toget;
 
         // Flip buffers
@@ -193,11 +303,9 @@ void decodeThread(void* arg)
         else
             buffer = &playBuffer1;
 
-        // Wait for signal to make another stream
-        svcWaitSynchronization(bufferReadyProduceRequest, U64_MAX);
-        svcClearEvent(bufferReadyProduceRequest);
-
+        debug("decode_buffer decode more\n");
     }
+    debug("decode_buffer done\n");
 }
 
 u32 getKeyState()
@@ -212,18 +320,18 @@ u32 getKeyState()
 
 void refresh(void)
 {
-    consoleClear();
+    clearTopScreen();
     unsigned int start, end;
 
     start = current_index + CONSOLE_HEIGHT >= files.size() ?
             (files.size() < CONSOLE_HEIGHT ? 0 : files.size() - CONSOLE_HEIGHT) :
             current_index;
     end = std::min(start + CONSOLE_HEIGHT, files.size() - 1);
-    printf("3ds-vgmstream v%s\n", version_str);
+    print("3ds-vgmstream v%s\n", version_str);
     for (unsigned int i = start; i <= end; i++)
     {
-        printf(i == current_index ? ">" : " ");
-        printf("%s\n", files[i].c_str());
+        print(i == current_index ? ">" : " ");
+        print("%s\n", files[i].c_str());
     }
 }
 
@@ -231,7 +339,7 @@ std::string select_file(void)
 {
     if (files.empty())
     {
-        printf("Place music files in the following directory\n%s\non root of sd card\n\n", music_directory.c_str());
+        print("Place music files in the following directory\n%s\non root of sd card\n\n", music_directory.c_str());
         return "";
     }
 
@@ -275,14 +383,14 @@ bool stream_file(const std::string& filename)
 {
     if (filename.empty())
     {
-        printf("No file selected\n");
+        print("No file selected\n");
         return true;
     }
 
     VGMSTREAM* vgmstream = init_vgmstream(filename.c_str());
     if (!vgmstream)
     {
-        printf("Bad file %s\n", filename.c_str());
+        print("Bad file %s\n", filename.c_str());
         return true;
     }
 
@@ -310,8 +418,8 @@ bool stream_file(const std::string& filename)
     Thread musicThread;
     Thread produceThread;
     svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
-    produceThread = threadCreate(decodeThread, &strm_file, 4 * 1024, prio-1, -2, false);
     musicThread = threadCreate(streamMusic, &strm_file, 4 * 1024, prio-1, -2, false);
+    produceThread = threadCreate(decodeThread, &strm_file, 4 * 1024, prio-1, -2, false);
 
     bool ret = false;
     while (aptMainLoop())
@@ -336,6 +444,8 @@ bool stream_file(const std::string& filename)
     threadJoin(produceThread, U64_MAX);
     threadFree(musicThread);
     threadFree(produceThread);
+    svcClearEvent(bufferReadyConsumeRequest);
+    svcClearEvent(bufferReadyProduceRequest);
 
 
     linearFree(rawSampleBuffer);
@@ -356,9 +466,14 @@ int main(void)
 	if(R_FAILED(ndspInit()))
 		return 0;
 
-    consoleInit(GFX_TOP, NULL);
+#ifdef DEBUG
+    LightLock_Init(&debug_lock);
+    consoleInit(GFX_BOTTOM, &bottomScreen);
+    consoleDebugInit(debugDevice_CONSOLE);
+#endif
 
-    gfxSetDoubleBuffering(GFX_BOTTOM, false);
+    consoleInit(GFX_TOP, &topScreen);
+    //aptHook(&hookCookie, AptEventHook, NULL);
 
     svcCreateEvent(&bufferReadyConsumeRequest, RESET_STICKY);
     svcCreateEvent(&bufferReadyProduceRequest, RESET_STICKY);
